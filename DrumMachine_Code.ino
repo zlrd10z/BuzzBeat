@@ -1,6 +1,6 @@
 //Memory
 #include <EEPROM.h>
-//
+
 //LCD
 #include <LiquidCrystal_I2C.h>  /*include LCD I2C Library*/
 LiquidCrystal_I2C lcd(0x27,16,2);  /*I2C scanned address defined + I2C screen size*/
