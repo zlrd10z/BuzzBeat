@@ -1,5 +1,12 @@
-//Memory
+#include <stdio.h>
+#include <string.h>
+
+//Memory - for saving and loading patterns
 #include <EEPROM.h>
+
+//To change digital port to Software Serial ports for second midi connector
+#include <SoftwareSerial.h>
+SoftwareSerial mySerial(11, 12); // Digital ports as 11 (RX) i 12 (TX)
 
 //LCD
 #include <LiquidCrystal_I2C.h>  /*include LCD I2C Library*/
@@ -9,6 +16,7 @@ int pointerCoordinate = 0;
 bool pointerOnLCD = false;
 unsigned long pointerTime;
 int drum_select;
+
 
 //Keyboard
 #include <Keypad.h>
@@ -27,6 +35,8 @@ Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 unsigned long specialButton1Timer;
 unsigned long specialButton2Timer;
 unsigned long saveSlotsButtonTimer;
+
+unsigned long changeDrumButtonTimer = 0;
 int saveSlotKey = -1;
 
 
@@ -39,7 +49,7 @@ int swing = 0;
 int drumVolume[7];
 bool muted[7];
 //int drumsMidi[7] = {36, 52, 54, 57, 58, 62, 54};
-int drumsMidi[7] = {39, 52, 54, 57, 58, 62, 54};
+int drumsMidi[7] = {39, 52, 54, 57, 58, 62, 59};
 
 int syncOutPin = 9;
 bool isEveryOther = false;
@@ -48,7 +58,7 @@ int whichQuarterNote = 0;
 
 //Pattern
 char drumPattern[7][16] = {    
-                        {'#', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '}, //kick
+                        {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '}, //kick
                         {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '}, //snare
                         {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '}, //clap
                         {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '}, //closed hi-hat
@@ -67,12 +77,20 @@ void setup() {
   pinMode(syncOutPin, OUTPUT);
   //Serial for midi communication
   Serial.begin(31250);
+  mySerial.begin(31250);
   timeSyncOut = timeDrumMachine = millis();
 
   //append mute table with false - none of the drums are muted when device is powered up 
   for(int i = 0; i < 7; i++) {
     muted[i] = false;
     drumVolume[i] = 100;
+    
+    lcd.setCursor(4,0);
+    lcd.print("BuzzBeat");
+    lcd.setCursor(6, 1);
+    lcd.print("v1.1");
+    delay(550);
+    lcd.clear();
   }
 }
 /*
@@ -85,6 +103,7 @@ void setup() {
 /where # is note on, blank characters between are no note.
 */
 
+/*
 void printDrumPattern(int drumChoice) { 
   lcd.clear();
   char *DrumsNames[] = {"kck", "snr", "clp", "cld", "ope", "rid", "mar"};
@@ -94,15 +113,11 @@ void printDrumPattern(int drumChoice) {
     lcd.print(drumPattern[drumChoice][i]);
   } 
  
-  for(int i = 0; i < 16; i += 4) {
-    lcd.setCursor(i,1);
-    lcd.print("|"); 
-  }
-
+  
   lcd.setCursor(1,1);
   lcd.print(DrumsNames[drumChoice]);
 
-  drawBPM();
+
 
   lcd.setCursor(5,1);
   if(isPlaying) lcd.print(">"); 
@@ -111,13 +126,30 @@ void printDrumPattern(int drumChoice) {
   lcd.setCursor(7,1);
   if(muted[drumChoice]) lcd.print("m"); 
   else lcd.print(" "); 
+}
+*/
 
+void printDrumPattern(int drumChoice) { 
+  char *DrumsNames[] = {"kck", "snr", "clp", "cld", "ope", "rid", "mar"};
+  String upperLine = "";
+
+  for(int i = 0; i < 16; i++) {
+    upperLine += drumPattern[drumChoice][i];
+  } 
+
+  
+  lcd.setCursor(7,1);
+  if (muted[drumChoice]) lcd.print("m");
+  else lcd.print(" ");
+  
+  lcd.setCursor(0,0);
+  lcd.print(upperLine);
+  lcd.setCursor(1,1);
+  lcd.print(DrumsNames[drumChoice]);
   
 }
 
 void drawBPM(){
-  lcd.setCursor(9,1);
-  lcd.print("BPM"); 
   lcd.setCursor(13,1);
   lcd.print(bpm);
   if(bpm < 10){
@@ -138,9 +170,13 @@ void updateDrumPatternList(char x, int p, int ds){
 void loop() {
   //display kick pattern as defualt after turning the device on
   if(!isDisplaying) {
+    lcd.clear();
+    lcd.setCursor(0,1);
+    lcd.print("|   |   |BPM|"); 
     printDrumPattern(0);
     lcd.setCursor(5,1);
     lcd.print("="); 
+    drawBPM();
     isDisplaying = true;
   }
 
@@ -166,16 +202,18 @@ void loop() {
   }
 
   //change displayed drum on LCD with keys 2 and 8
-  if (key == '2'){
+  if (key == '2' && currentTime - changeDrumButtonTimer >= 400 ){
     if(drum_select < 6) drum_select++;
     else drum_select = 0;
     printDrumPattern(drum_select);
+    changeDrumButtonTimer = millis();
     }
 
-  if (key == '8'){
+  if (key == '8' && currentTime - changeDrumButtonTimer >= 400){
     if(drum_select > 0) drum_select--;
     else drum_select = 6;
     printDrumPattern(drum_select);
+    changeDrumButtonTimer = millis();
     }
 
   //Assign note on or off 
@@ -225,7 +263,7 @@ void loop() {
   }
 
   //mute/unmute drum
-  if(key == '*' && isPlaying){    
+  if(key == '*'){    
     lcd.setCursor(7,1);
     if(muted[drum_select]) {
       muted[drum_select] = false;
@@ -237,11 +275,20 @@ void loop() {
     }
   }
 
+  //clear selected drum pattern
+  if(key == '#'){
+    for(int i = 0; i < 16; i++) drumPattern[drum_select][i] = ' ';
+    lcd.setCursor(0,0);
+    lcd.print("                ");
+    printDrumPattern[drum_select];
+   
+  }
+
   currentTime = millis();
 
   //Blinking pointer part:
   //pointer will blink at 650 miliseconds interval
-  if(currentTime - pointerTime >= 650 ){
+  if(currentTime - pointerTime >= 500 ){
     lcd.setCursor(pointerCoordinate, 0);
     pointerTime = millis();
     if(!pointerOnLCD){
@@ -255,16 +302,16 @@ void loop() {
   }  
 
   //Special buttons # and * options:
-  if(key == '#' && !isPlaying){
+  if(key == '9' && !isPlaying){
     specialButton1Timer = millis();
     saveSlotKey = -1;
   }
 
-  if(key == '*' && !isPlaying) specialButton2Timer = millis();
+  if(key == '7' && !isPlaying) specialButton2Timer = millis();
 
   int keyInt = -1;
   if(key){
-    if(key != '#' || key != '*') keyInt = key - '0';
+    if(key != '7' || key != '9') keyInt = key - '0';
     }
 
   if(!isPlaying){
@@ -274,7 +321,7 @@ void loop() {
     }
   }
 
-  //saving pattern - press [#] button and then from 1 to 6 on numpad, to pick slot
+  //saving pattern - press [9] button and then from 1 to 6 on numpad, to pick slot
   if(specialButton1Timer && currentTime - specialButton1Timer <= 5000 && !isPlaying){
     if(saveSlotKey != -1 && currentTime - saveSlotsButtonTimer <= 3000 ){
       saveSlotsButtonTimer = specialButton1Timer = 0;
@@ -283,7 +330,7 @@ void loop() {
     }
   }
 
-  //loading Pattern - press [*] button and then from 1 to 6 on numpad, to pick slot
+  //loading Pattern - press [7] button and then from 1 to 6 on numpad, to pick slot
   if(specialButton2Timer && currentTime - specialButton2Timer <= 5000 && !isPlaying){
     if(saveSlotKey != -1 && currentTime - saveSlotsButtonTimer <= 3000 ){
       saveSlotsButtonTimer = specialButton2Timer = 0;
@@ -291,6 +338,8 @@ void loop() {
       saveSlotKey = -1;
     }
   }
+
+
 
   //read bpm from potetiometer 1
   int readPotentiometer1 = scalePotentiometerReadBPM(analogRead(A7)); // BPM from potentiometer
@@ -321,13 +370,17 @@ void loop() {
   int x, y;
   x = y = countBPM(bpm);
 
+
   //send sync out via jack connected to pin D9
   unsigned long current_time = millis();
+  /*
   if(current_time >= timeSyncOut + y){
-    //send2ppq();
+    send2ppq();
     timeSyncOut = current_time;
   }
-  
+  */
+
+
   x /= 2; //BPM is not working good here, to be figured.
   //swing - every other note is playig slighty faster
   if(!isEveryOther) x += swing; 
@@ -339,13 +392,17 @@ void loop() {
   current_time = millis();
 
   if(current_time >= timeDrumMachine + x && isPlaying){
+    mySerial.write(0xF8); //send midi clock through midi out female connector 1
+    delayMicroseconds(100); //delay between serials to mitigate interuptions
     send2ppq();
-    play_drums();
+    play_drums(); // send midi notes through midi out female connector 2
+    delayMicroseconds(100);
     timeDrumMachine = current_time;
     if(whichQuarterNote < 15) whichQuarterNote++;
     else whichQuarterNote = 0;
     if(!isEveryOther) isEveryOther = true;
     else isEveryOther = false;
+    
 
   }
 }
@@ -411,7 +468,7 @@ void send2ppq(){
 //6 save slots, so 6 pattern could be stored
 
 void savePattern(int savingSlot){
-  /*
+  
   int address;
   address = 0 + (savingSlot * 112);
   for(int i = 0; i < 7 ;i++){
@@ -420,7 +477,7 @@ void savePattern(int savingSlot){
       address++;
     }
   }
-  */
+  
   //display info about save:
   lcd.clear();
   lcd.setCursor(0,0);
