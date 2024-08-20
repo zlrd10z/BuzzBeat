@@ -25,3 +25,9 @@ Used Parts:
     • DC 2.1/5.5 female connector
     • Keyboard Keys stickers
 
+# Required Libraries:
+This project utilizes the following Arduino libraries:
+    •[EEPROM.h](https://www.arduino.cc/en/Reference/EEPROM) - Library for managing EEPROM memory.
+    •[SoftwareSerial.h](https://www.arduino.cc/en/Reference/SoftwareSerial) - Library for emulating serial communication on other pins.
+    •[LiquidCrystal_I2C.h](https://github.com/johnrickman/LiquidCrystal_I2C) - Library for controlling an LCD display via I2C.
+    •[Keypad.h](https://github.com/Chris--A/Keypad) - Library for handling matrix keypads.
